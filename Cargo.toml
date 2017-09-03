@@ -6,10 +6,5 @@ authors = ["Lucas Bittencourt <lbittencs@gmail.com>"]
 [dependencies]
 amethyst = { path = "../amethyst" }
 cgmath = "0.15"
-genmesh = "0.4"
-nalgebra = "0.11"
-ncollide = "0.11"
-#nphysics2d = "0.6"
-aabb-tree = { path = "../aabb_tree" }
-rayon = "0.7.1"
-num = "0.1"
+#genmesh = "0.4"
+futures = "0.1.14"
