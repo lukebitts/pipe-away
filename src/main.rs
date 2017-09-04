@@ -4,6 +4,8 @@
 extern crate amethyst;
 extern crate cgmath;
 extern crate futures;
+extern crate noisy_float;
+extern crate rayon;
 
 use amethyst::assets::{AssetFuture, BoxedErr};
 use amethyst::{Application, Engine, State, Trans};
@@ -179,7 +181,6 @@ fn main() {
         .expect("renderer")
         .register::<LineEvent>()
         .register::<Body>()
-        .register::<PhysicsInit>()
         .register::<SpawnEvent>()
         .register::<Transform>()
         .register::<LocalTransform>()

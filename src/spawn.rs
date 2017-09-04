@@ -4,10 +4,9 @@ use amethyst::ecs::rendering::{MeshComponent, MaterialComponent};
 use amethyst::timing::Time;
 use amethyst::ecs::{Entities, LazyUpdate};
 use amethyst::assets::AssetFuture;
-
-use super::physics::{Body, Shape, BodyType};
-
+use super::physics::{Body, Shape};
 use std::time::Duration;
+use noisy_float::types::n32;
 
 #[derive(Copy, Clone)]
 pub enum SpawnEvent {
@@ -49,7 +48,7 @@ impl<'a> System<'a> for SpawnSystem {
         events.clear();
 
         self.delta += time.delta_time;
-        let wait_time = Duration::from_millis(10000);
+        let wait_time = Duration::from_millis(5);
 
         if let SpawnEvent::Stop = self.current_state {
             self.delta = Duration::from_millis(0);
@@ -65,8 +64,8 @@ impl<'a> System<'a> for SpawnSystem {
                     let mut line_transform = LocalTransform::default();
                     line_transform.translation[0] = 512.0;
                     line_transform.translation[1] = 768.0 - 50.0;
-                    line_transform.scale[0] = 50.0;
-                    line_transform.scale[1] = 50.0;
+                    line_transform.scale[0] = 10.0;
+                    line_transform.scale[1] = 10.0;
 
                     let line_entity = entities.create();
                     lazy.insert(line_entity, square.clone());
@@ -77,7 +76,7 @@ impl<'a> System<'a> for SpawnSystem {
 
                     lazy.insert(
                         line_entity,
-                        Body::new(Shape::Circle { radius: 25.0 }, BodyType::Dynamic),
+                        Body::new(Shape::Circle { radius: n32(10.0) }),
                     );
                 }
             }

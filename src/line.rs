@@ -6,7 +6,8 @@ use amethyst::ecs::rendering::{MeshComponent, MaterialComponent};
 use amethyst::ecs::{Entities, LazyUpdate};
 use cgmath::{MetricSpace, Rotation3, Vector2, Point2, Quaternion, Vector3, Deg};
 use std::f32::consts::PI;
-use super::physics::{Body, Shape, BodyType};
+use super::physics::{Body, Shape};
+use noisy_float::types::n32;
 
 pub enum LineEvent {
     Start,
@@ -108,12 +109,13 @@ impl<'a> System<'a> for LineSystem {
                                     lazy.insert(line_entity, line_transform);
                                     lazy.insert(line_entity, Transform::default());
 
+                                    let mut body = Body::new(
+                                        Shape::Circle { radius: n32(200.0) }
+                                    );
+                                    body.set_static();
                                     lazy.insert(
                                         line_entity,
-                                        Body::new(
-                                            Shape::Circle { radius: 200.0 },
-                                            BodyType::Static,
-                                        ),
+                                        body,
                                     );
                                 }
 

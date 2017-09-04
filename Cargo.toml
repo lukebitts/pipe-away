@@ -8,3 +8,5 @@ amethyst = { path = "../amethyst" }
 cgmath = "0.15"
 #genmesh = "0.4"
 futures = "0.1.14"
+noisy_float = "0.1.2"
+rayon = "0.7.1"
