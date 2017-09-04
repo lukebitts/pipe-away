@@ -7,7 +7,6 @@ use amethyst::ecs::{Entities, LazyUpdate};
 use cgmath::{MetricSpace, Rotation3, Vector2, Point2, Quaternion, Vector3, Deg};
 use std::f32::consts::PI;
 use super::physics::{Body, Shape};
-use noisy_float::types::n32;
 
 pub enum LineEvent {
     Start,
@@ -95,28 +94,25 @@ impl<'a> System<'a> for LineSystem {
                                     let mut line_transform = LocalTransform::default();
                                     line_transform.translation[0] = line_x;
                                     line_transform.translation[1] = line_y;
-                                    line_transform.rotation = Quaternion::from_axis_angle(
+                                    /*line_transform.rotation = Quaternion::from_axis_angle(
                                         Vector3::new(0f32, 0f32, 1f32),
                                         Deg(angle),
-                                    ).into();
+                                    ).into();*/
                                     line_transform.scale[0] = distance;
                                     line_transform.scale[1] = 10.0;
 
                                     let line_entity = entities.create();
-                                    lazy.insert(line_entity, square.clone());
-                                    lazy.insert(line_entity, material.clone());
-
-                                    lazy.insert(line_entity, line_transform);
-                                    lazy.insert(line_entity, Transform::default());
-
+                                    
                                     let mut body = Body::new(
-                                        Shape::Circle { radius: n32(200.0) }
+                                        Shape::rect(Vector2::new(distance / 2.0, 5.0))
                                     );
                                     body.set_static();
-                                    lazy.insert(
-                                        line_entity,
-                                        body,
-                                    );
+                                    body.set_orient(&mut line_transform, Deg(angle));
+                                    lazy.insert(line_entity, square.clone());
+                                    lazy.insert(line_entity, material.clone());
+                                    lazy.insert(line_entity, line_transform);
+                                    lazy.insert(line_entity, Transform::default());
+                                    lazy.insert(line_entity, body,);
                                 }
 
                             } else {

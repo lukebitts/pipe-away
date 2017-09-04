@@ -4,7 +4,6 @@
 extern crate amethyst;
 extern crate cgmath;
 extern crate futures;
-extern crate noisy_float;
 extern crate rayon;
 
 use amethyst::assets::{AssetFuture, BoxedErr};
@@ -18,8 +17,8 @@ use amethyst::renderer::vertex::PosNormTex;
 use amethyst::ecs::transform::{Transform, LocalTransform, TransformSystem, Child,
                                Init as InitTransform};
 use amethyst::input::InputHandler;
-
 use futures::{IntoFuture, Future};
+use cgmath::{Vector2, Rad};
 
 mod line;
 use line::*;
@@ -92,6 +91,44 @@ impl State for PipeAway {
             }
         };
 
+        {
+            let mut local = LocalTransform::default();
+            local.translation = [400.0, 768.0 - 550.0, 0.0];
+            local.scale[0] = 300.0;
+            local.scale[1] = 20.0;
+
+            let mut body = Body::new(Shape::rect(Vector2::new(150.0, 10.0)));
+            body.set_static();
+            body.set_orient(&mut local, Rad(0.0));
+
+            engine.world
+            .create_entity()
+            .with(Transform::default())
+            .with(local)
+            .with(body)
+            .with(mesh.clone())
+            .with(mtl.clone())
+            .build();
+        }
+
+        {
+            let mut local = LocalTransform::default();
+            local.translation = [500.0, 768.0 - 100.0, 0.0];
+            local.scale[0] = 10.0;
+            local.scale[1] = 10.0;
+
+            let mut body = Body::new(Shape::Circle{ radius: 10.0 });
+
+            engine.world
+            .create_entity()
+            .with(Transform::default())
+            .with(local)
+            .with(body)
+            .with(mesh.clone())
+            .with(mtl.clone())
+            .build();
+        }
+
         engine.world.add_resource(InputHandler::new());
         engine.world.add_resource(mesh);
         engine.world.add_resource(mtl);
@@ -143,6 +180,16 @@ impl State for PipeAway {
                         ..
                     } => {
                         engine.world.create_entity().with(SpawnEvent::Stop).build();
+                    }
+                    WindowEvent::KeyboardInput {
+                        input: KeyboardInput {
+                            state: ElementState::Released,
+                            virtual_keycode: Some(VirtualKeyCode::Q),
+                            ..
+                        },
+                        ..
+                    } => {
+                        engine.world.create_entity().with(SpawnEvent::RemoveStatic).build();
                     }
                     WindowEvent::KeyboardInput {
                         input: KeyboardInput {
