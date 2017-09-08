@@ -8,12 +8,12 @@ use amethyst::ecs::{Component, VecStorage};
 pub use self::system::PhysicsSystem;
 pub use self::collision::{Manifold, ManifoldData};
 
-pub type Real = f32;
+pub type Real = f64;
 pub type Vec2 = Vector2<Real>;
 pub type Mat2 = Matrix2<Real>;
 
-pub static PI : Real = ::std::f32::consts::PI;
-pub static GRAVITY : [Real; 2] = [0.0, -500.0];
+pub static PI : Real = ::std::f64::consts::PI;
+pub static GRAVITY : [Real; 2] = [0.0, -15.0];
 pub static EPSILON : Real = 0.0001;
 pub static FRAME_TIME: Real = 1.0/60.0;
 
@@ -162,7 +162,7 @@ pub struct Body {
 impl Body {
     // Body::Body, Shape::Initialize
     pub fn new(mut shape: Shape) -> Self {
-        let mass_data = compute_mass(&mut shape, 1.0);
+        let mass_data = compute_mass(&mut shape, 10.2);
 
         Body {
             shape: shape,
@@ -171,9 +171,9 @@ impl Body {
             angular_velocity: 0.0,
             torque: 0.0,
             force: Vec2::new(0.0, 0.0),
-            static_friction: 0.5,
-            dynamic_friction: 0.3,
-            restitution: 0.2,
+            static_friction: 0.2,
+            dynamic_friction: 0.2,
+            restitution: 0.0,
 
             moment_inertia: mass_data.moment_inertia,
             inv_inertia: mass_data.inv_inertia,
@@ -210,7 +210,7 @@ impl Body {
         //let roll = (2.0*(q.v.x*q.v.y + q.s*q.v.z)).atan2(q.s.powi(2) + q.v.x.powi(2) - q.v.y.powi(2) - q.v.z.powi(2));
         
         //rotation format: [w, x, y, z]
-        local.rotation = Quaternion::from_angle_z(Rad(radians.0)).into();
+        local.rotation = Quaternion::from_angle_z(Rad(radians.0 as f32)).into();
 
         match self.shape {
             Shape::Circle{ .. } => (),
@@ -246,14 +246,13 @@ impl Body {
             return
         }
 
-        let translation = Vec2::new(local.translation[0], local.translation[1]) + self.velocity * delta;
-
-        local.translation = [translation.x, translation.y, 0.0];
+        let translation = PhysicsSystem::position(local) + self.velocity * delta;
+        local.translation = PhysicsSystem::translation(translation);
         let orient = {
             let q : Quaternion<f32> = local.rotation.into();
             let roll = (2.0*(q.v.x*q.v.y + q.s*q.v.z)).atan2(q.s.powi(2) + q.v.x.powi(2) - q.v.y.powi(2) - q.v.z.powi(2));
 
-            Rad(roll + self.angular_velocity * delta)
+            Rad(roll as Real + self.angular_velocity * delta)
         };
         self.set_orient(local, orient);
 

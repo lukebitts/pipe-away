@@ -13,10 +13,21 @@ pub struct PhysicsSystem {
 }
 
 impl PhysicsSystem {
+    pub const SCALE: Real = 25.0;
+
     pub fn new() -> Self {
         PhysicsSystem {
             acumulator: 0.0
         }
+    }
+
+    pub fn position(l: &LocalTransform) -> Vec2 {
+        Vec2::new(l.translation[0] as Real,l.translation[1] as Real) / Self::SCALE
+    }
+
+    pub fn translation(mut v: Vec2) -> [f32;3] {
+        v *= Self::SCALE;
+        [v.x as f32, v.y as f32, 0.0]
     }
 
     // Manifold::ApplyImpulse
@@ -36,8 +47,8 @@ impl PhysicsSystem {
         }
 
         for contact in &m.contacts {
-            let ra = contact - Vec2::new(local_a.translation[0], local_a.translation[1]);
-            let rb = contact - Vec2::new(local_b.translation[0], local_b.translation[1]);
+            let ra = contact - Self::position(local_a);
+            let rb = contact - Self::position(local_b);
             
             let (inv_mass_sum, j, impulse) = {
                 let rv = body_b.velocity + cross_real_vector(body_b.angular_velocity, rb) -
@@ -56,7 +67,7 @@ impl PhysicsSystem {
                     ra_cross_n.powi(2) * body_a.inv_inertia +
                     rb_cross_n.powi(2) * body_b.inv_inertia;
                 
-                let j = -(1.0 + m.e) * contact_vel / inv_mass_sum / m.contacts.len() as f32;
+                let j = -(1.0 + m.e) * contact_vel / inv_mass_sum / m.contacts.len() as Real;
                 (inv_mass_sum, j, m.normal * j)
             };
 
@@ -64,26 +75,19 @@ impl PhysicsSystem {
             body_b.apply_impulse( impulse, rb);
 
             let tangent_impulse = {
-                // rv = B->velocity + Cross( B->angularVelocity, rb ) -
-                //      A->velocity - Cross( A->angularVelocity, ra );
                 let rv = body_b.velocity + cross_real_vector(body_b.angular_velocity, rb) -
                          body_a.velocity - cross_real_vector(body_a.angular_velocity, ra);
 
-                // Vec2 t = rv - (normal * Dot( rv, normal ));
-                // t.Normalize( );
-                //let unsafe_rv = UnsafeVec2::new(rv.x, rv.y);
-                //let unsafe_normal = UnsafeVec2::new(m.normal.x, m.normal.y);
                 
                 let mut t = rv - (m.normal * dot(rv, m.normal));
                 let len_t = t.magnitude();
+
                 //if len_t is too small we can't normalize the vector, since it would divide by zero
                 if !float_cmp(len_t, 0.0) {
                     t = t.normalize();
                 }
 
-                //let t = Vec2::new(unsafe_t.x, unsafe_t.y);
-
-                let jt = -dot(rv, t) / inv_mass_sum / m.contacts.len() as f32;
+                let jt = -dot(rv, t) / inv_mass_sum / m.contacts.len() as Real;
 
                 if float_cmp(jt, 0.0) {
                     return (body_a, body_b)
@@ -102,7 +106,6 @@ impl PhysicsSystem {
         (body_a, body_b)
     }
 
-    // Manifold::PositionalCorrect
     fn positional_correct(&mut self, m: &Manifold,
         (body_a, mut local_a): (&Body, LocalTransform), 
         (body_b, mut local_b): (&Body, LocalTransform)
@@ -110,15 +113,13 @@ impl PhysicsSystem {
         let k_slop = 0.05;
         let percent = 0.4;
 
-        //let unsafe_normal = UnsafeVec2::new(m.normal.x, m.normal.y);
         let correction = ((m.penetration - k_slop).max(0.0) / (body_a.inv_mass + body_b.inv_mass)) * m.normal * percent;
-        //let correction = Vec2::new(unsafe_correction.x, unsafe_correction.y);
 
-        let pos_a = Vec2::new(local_a.translation[0], local_a.translation[1]) - correction * body_a.inv_mass;
-        let pos_b = Vec2::new(local_b.translation[0], local_b.translation[1]) + correction * body_b.inv_mass;
+        let pos_a = Self::position(&local_a) - correction * body_a.inv_mass;
+        let pos_b = Self::position(&local_b) + correction * body_b.inv_mass;
 
-        local_a.translation = [pos_a.x, pos_a.y, 0.0];
-        local_b.translation = [pos_b.x, pos_b.y, 0.0];
+        local_a.translation = Self::translation(pos_a);
+        local_b.translation = Self::translation(pos_b);
 
         (local_a, local_b)
     }
@@ -133,7 +134,7 @@ impl<'a> System<'a> for PhysicsSystem {
         Fetch<'a, Time>,
     );
     fn run(&mut self, (mut bodies, mut locals, inits, entities, time): Self::SystemData) {
-        let delta = time.delta_time.as_delta32();
+        let delta = time.delta_time.as_delta64();
         self.acumulator += delta;
         
         while self.acumulator >= FRAME_TIME {
@@ -152,24 +153,24 @@ impl<'a> System<'a> for PhysicsSystem {
                         match (&body_a.shape, &body_b.shape) {
                             (&Shape::Circle { radius: r1 }, &Shape::Circle { radius: r2 }) => {
                                 if let Some(manifold_data) = collision::circle_circle(
-                                    (i_a, r1, local_a),
-                                    (i_b, r2, local_b)
+                                    (i_a, r1 / PhysicsSystem::SCALE, local_a),
+                                    (i_b, r2 / PhysicsSystem::SCALE, local_b)
                                 ) {
                                     ret.push(manifold_data);
                                 }
                             }
                             (&Shape::Circle { radius }, &Shape::Polygon { ref orientation, ref vertices }) => {
                                 if let Some(manifold_data) = collision::circle_polygon(
-                                    (i_a, radius, local_a),
-                                    (i_b, orientation, vertices, local_b)
+                                    (i_a, radius / PhysicsSystem::SCALE, local_a),
+                                    (i_b, orientation, &vertices.iter().cloned().map(|mut v| { v.position /= PhysicsSystem::SCALE; v }).collect::<Vec<_>>(), local_b)
                                 ) {
                                     ret.push(manifold_data);
                                 }
                             }
                             (&Shape::Polygon { ref orientation, ref vertices }, &Shape::Circle { radius }) => {
                                 if let Some(manifold_data) = collision::circle_polygon(
-                                    (i_b, radius, local_b),
-                                    (i_a, orientation, vertices, local_a)
+                                    (i_b, radius / PhysicsSystem::SCALE, local_b),
+                                    (i_a, orientation, &vertices.iter().cloned().map(|mut v| { v.position /= PhysicsSystem::SCALE; v }).collect::<Vec<_>>(), local_a)
                                 ) {
                                     ret.push(manifold_data);
                                 }
@@ -230,8 +231,6 @@ impl<'a> System<'a> for PhysicsSystem {
                 body.force = Vec2::new(0.0, 0.0);
                 body.torque = 0.0;
             });
-
-            println!("Body count: {}", (&mut bodies, &mut locals).join().count());
         }
     }
 

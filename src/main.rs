@@ -76,8 +76,8 @@ impl State for PipeAway {
 
             let dim = ScreenDimensions {
                 //aspect_ratio: 768.0 / 1024.0,
-                w: 1024.0,
-                h: 768.0,
+                w: 1900.0,
+                h: 1000.0,
             };
 
             let proj = Projection::orthographic(0.0, dim.w, dim.h, 0.0);
@@ -91,7 +91,7 @@ impl State for PipeAway {
             }
         };
 
-        {
+        /*{
             let mut local = LocalTransform::default();
             local.translation = [400.0, 768.0 - 550.0, 0.0];
             local.scale[0] = 300.0;
@@ -127,7 +127,7 @@ impl State for PipeAway {
             .with(mesh.clone())
             .with(mtl.clone())
             .build();
-        }
+        }*/
 
         engine.world.add_resource(InputHandler::new());
         engine.world.add_resource(mesh);
@@ -189,7 +189,17 @@ impl State for PipeAway {
                         },
                         ..
                     } => {
-                        engine.world.create_entity().with(SpawnEvent::RemoveStatic).build();
+                        engine.world.create_entity().with(SpawnEvent::RemoveDynamic).build();
+                    }
+                    WindowEvent::KeyboardInput {
+                        input: KeyboardInput {
+                            state: ElementState::Released,
+                            virtual_keycode: Some(VirtualKeyCode::X),
+                            ..
+                        },
+                        ..
+                    } => {
+                        engine.world.create_entity().with(SpawnEvent::RemoveAll).build();
                     }
                     WindowEvent::KeyboardInput {
                         input: KeyboardInput {

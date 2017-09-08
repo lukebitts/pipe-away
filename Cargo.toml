@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Lucas Bittencourt <lbittencs@gmail.com>"]
 
 [dependencies]
-amethyst = { path = "../amethyst" }
+amethyst = { path = "amethyst/" }
 cgmath = "0.15"
 #genmesh = "0.4"
 futures = "0.1.14"

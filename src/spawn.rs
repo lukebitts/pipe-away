@@ -1,4 +1,4 @@
-use amethyst::ecs::{Component, VecStorage, System, Fetch, ParJoin, Join, WriteStorage, ReadStorage};
+use amethyst::ecs::{World, Component, VecStorage, System, Fetch, ParJoin, Join, WriteStorage, ReadStorage};
 use amethyst::ecs::transform::{LocalTransform, Transform};
 use amethyst::ecs::rendering::{MeshComponent, MaterialComponent};
 use amethyst::timing::Time;
@@ -14,7 +14,8 @@ pub enum SpawnEvent {
     Start,
     Stop,
     Run,
-    RemoveStatic,
+    RemoveDynamic,
+    RemoveAll,
 }
 
 impl Component for SpawnEvent {
@@ -46,12 +47,24 @@ impl<'a> System<'a> for SpawnSystem {
 
     fn run(&mut self, (mut events, bodies, square, material, time, entities, lazy): Self::SystemData) {
         if let Some(evt) = events.join().last() {
-            self.current_state = *evt;
+            match evt {
+                &SpawnEvent::RemoveDynamic => {
+                    (&*entities, &bodies).par_join().filter(|&(entity, body)| body.inv_mass > 0.0).for_each(|(entity, _)|{
+                        entities.delete(entity);
+                    });
+                },
+                &SpawnEvent::RemoveAll => {
+                    (&*entities, &bodies).par_join().for_each(|(entity, _)|{
+                        entities.delete(entity);
+                    });
+                }
+                _ => self.current_state = *evt
+            }
         }
         events.clear();
 
         self.delta += time.delta_time;
-        let wait_time = Duration::from_millis(5);
+        let wait_time = Duration::from_millis(250);
 
         if let SpawnEvent::Stop = self.current_state {
             self.delta = Duration::from_millis(0);
@@ -60,13 +73,6 @@ impl<'a> System<'a> for SpawnSystem {
                 SpawnEvent::Start => {
                     self.current_state = SpawnEvent::Run;
                     self.delta += wait_time;
-                },
-                SpawnEvent::RemoveStatic => {
-                    self.current_state = SpawnEvent::Run;
-
-                    (&bodies).par_join().filter(|body| body.inv_mass == 0.0).for_each(|_|{
-                        //delete them
-                    });
                 },
                 _ => ()
             }
@@ -77,11 +83,12 @@ impl<'a> System<'a> for SpawnSystem {
 
                     let mut line_transform = LocalTransform::default();
                     line_transform.translation[0] = 512.0;
-                    line_transform.translation[1] = 768.0 - 50.0;
+                    line_transform.translation[1] = 1000.0 - 50.0;
                     line_transform.scale[0] = 10.0;
                     line_transform.scale[1] = 10.0;
 
                     let mut body = Body::new(Shape::Circle { radius: 10.0 });
+                    body.static_friction = 0.2;
                     body.set_orient(&mut line_transform, Rad(0.0));
 
                     let line_entity = entities.create();

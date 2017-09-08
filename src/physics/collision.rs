@@ -1,4 +1,4 @@
-use super::{cross_real_vector, float_cmp, dist_sqr, Vec2, Real, Mat2, PolygonShapeVertex};
+use super::{cross_real_vector, float_cmp, dist_sqr, Vec2, Real, Mat2, PolygonShapeVertex, PhysicsSystem};
 //use super::scene::BodyIndex;
 use super::Body;
 use super::{GRAVITY, EPSILON};
@@ -36,8 +36,8 @@ impl ManifoldData {
         let df = body_a.dynamic_friction.powi(2).sqrt();
 
         for contact in &self.contacts {
-            let ra = contact - Vec2::new(local_a.translation[0], local_a.translation[1]);
-            let rb = contact - Vec2::new(local_b.translation[0], local_b.translation[1]);
+            let ra = contact - PhysicsSystem::position(local_a); //Vec2::new(local_a.translation[0], local_a.translation[1]);
+            let rb = contact - PhysicsSystem::position(local_b); //Vec2::new(local_b.translation[0], local_b.translation[1]);
 
             let rv = body_b.velocity + cross_real_vector(body_b.angular_velocity, rb) -
                      body_a.velocity - cross_real_vector(body_a.angular_velocity, ra);
@@ -71,8 +71,8 @@ pub fn circle_circle(
     -> Option<ManifoldData> {
     // Calculate translational vector, which is normal
 
-    let pos_a = Vec2::new(local_a.translation[0], local_a.translation[1]);
-    let pos_b = Vec2::new(local_b.translation[0], local_b.translation[1]);
+    let pos_a = PhysicsSystem::position(local_a); //Vec2::new(local_a.translation[0], local_a.translation[1]);
+    let pos_b = PhysicsSystem::position(local_b); //Vec2::new(local_b.translation[0], local_b.translation[1]);
 
     let normal = pos_b - pos_a;
     let dist_sqr = len_sqr(normal);
@@ -106,13 +106,13 @@ pub fn circle_polygon(
         (i_b, orientation_b, vertices_b, local_b): (Entity, &Mat2, &Vec<PolygonShapeVertex>, &LocalTransform))
     -> Option<ManifoldData> {
 
-    let pos_a = Vec2::new(local_a.translation[0], local_a.translation[1]);
-    let pos_b = Vec2::new(local_b.translation[0], local_b.translation[1]);
+    let pos_a = PhysicsSystem::position(local_a);
+    let pos_b = PhysicsSystem::position(local_b);
 
     let mut center = pos_a;
     center = orientation_b.transpose() * (center - pos_b);
 
-    let mut separation = ::std::f32::MIN;
+    let mut separation = ::std::f64::MIN;
     let mut face_normal = 0;
     for (i, vertex) in vertices_b.iter().enumerate() {
         let s = dot(vertex.normal, center - vertex.position);

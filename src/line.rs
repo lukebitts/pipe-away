@@ -5,7 +5,7 @@ use amethyst::assets::AssetFuture;
 use amethyst::ecs::rendering::{MeshComponent, MaterialComponent};
 use amethyst::ecs::{Entities, LazyUpdate};
 use cgmath::{MetricSpace, Rotation3, Vector2, Point2, Quaternion, Vector3, Deg};
-use std::f32::consts::PI;
+use std::f64::consts::PI;
 use super::physics::{Body, Shape};
 
 pub enum LineEvent {
@@ -73,8 +73,8 @@ impl<'a> System<'a> for LineSystem {
                                 self.line_state = LineState::Waiting;
 
                                 let line_start =
-                                    Point2::new(line_start.x as f32, line_start.y as f32);
-                                let line_end = Point2::new(x as f32, y as f32);
+                                    Point2::new(line_start.x as f64, line_start.y as f64);
+                                let line_end = Point2::new(x as f64, y as f64);
 
                                 let distance = line_start.distance(line_end);
 
@@ -87,18 +87,18 @@ impl<'a> System<'a> for LineSystem {
                                 if distance > 50.0 {
                                     let (line_x, line_y) = (
                                         (line_start.x + line_end.x) / 2.0,
-                                        768.0 -
+                                        1000.0 -
                                             (line_start.y + line_end.y) / 2.0,
                                     );
 
                                     let mut line_transform = LocalTransform::default();
-                                    line_transform.translation[0] = line_x;
-                                    line_transform.translation[1] = line_y;
+                                    line_transform.translation[0] = line_x as f32;
+                                    line_transform.translation[1] = line_y as f32;
                                     /*line_transform.rotation = Quaternion::from_axis_angle(
                                         Vector3::new(0f32, 0f32, 1f32),
                                         Deg(angle),
                                     ).into();*/
-                                    line_transform.scale[0] = distance;
+                                    line_transform.scale[0] = distance as f32;
                                     line_transform.scale[1] = 10.0;
 
                                     let line_entity = entities.create();
@@ -106,6 +106,7 @@ impl<'a> System<'a> for LineSystem {
                                     let mut body = Body::new(
                                         Shape::rect(Vector2::new(distance / 2.0, 5.0))
                                     );
+                                    body.static_friction = 0.2;
                                     body.set_static();
                                     body.set_orient(&mut line_transform, Deg(angle));
                                     lazy.insert(line_entity, square.clone());
