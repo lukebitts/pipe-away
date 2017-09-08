@@ -1,26 +1,24 @@
-#![allow(unused_imports)]
-#![allow(dead_code)]
+//#![allow(unused_imports)]
+//#![allow(dead_code)]
 
 extern crate amethyst;
 extern crate cgmath;
-extern crate ncollide;
-extern crate nalgebra;
-extern crate aabb_tree;
+extern crate futures;
 extern crate rayon;
-extern crate num;
 
-use amethyst::{Application, State, Trans, Event, WindowEvent, VirtualKeyCode, ElementState,
-               MouseButton};
-use amethyst::asset_manager::AssetManager;
+use amethyst::assets::{AssetFuture, BoxedErr};
+use amethyst::{Application, Engine, State, Trans};
+use amethyst::event::{Event, WindowEvent, KeyboardInput, VirtualKeyCode, MouseButton, ElementState};
 use amethyst::config::Config;
-use amethyst::ecs::{World, Component, VecStorage, System, Fetch, Join, WriteStorage, ReadStorage, Entity};
-use amethyst::ecs::resources::{Camera, InputHandler, Projection, ScreenDimensions};
-use amethyst::gfx_device::DisplayConfig;
-use amethyst::renderer::Layer;
-use amethyst::renderer::pass::{Clear, DrawFlat};
-use amethyst::renderer::{Pipeline, VertexPosNormal};
-use amethyst::ecs::components::{Mesh, LocalTransform, Texture, Transform};
-use amethyst::ecs::systems::TransformSystem;
+use amethyst::renderer::{pass, Config as DisplayConfig, Pipeline, Camera, Projection, Stage, Mesh,
+                         Texture, MaterialBuilder};
+use amethyst::ecs::rendering::{MeshComponent, MaterialComponent, Factory};
+use amethyst::renderer::vertex::PosNormTex;
+use amethyst::ecs::transform::{Transform, LocalTransform, TransformSystem, Child,
+                               Init as InitTransform};
+use amethyst::input::InputHandler;
+use futures::{IntoFuture, Future};
+use cgmath::{Vector2, Rad};
 
 mod line;
 use line::*;
@@ -36,106 +34,188 @@ use duration_utils::*;
 
 struct PipeAway;
 
+fn load_proc_asset<T, F>(engine: &mut Engine, f: F) -> AssetFuture<T::Item>
+where
+    T: IntoFuture<Error = BoxedErr>,
+    T::Future: 'static,
+    F: FnOnce(&mut Engine) -> T,
+{
+    let future = f(engine).into_future();
+    let future: Box<Future<Item = T::Item, Error = BoxedErr>> = Box::new(future);
+    AssetFuture(future.shared())
+}
+
 impl State for PipeAway {
-    fn on_start(&mut self, world: &mut World, assets: &mut AssetManager, pipe: &mut Pipeline) {
-        let layer = Layer::new(
-            "main",
-            vec![
-                Clear::new([0.0, 0.0, 0.0, 1.0]),
-                DrawFlat::new("main", "main"),
-            ],
-        );
-        pipe.layers.push(layer);
+    fn on_start(&mut self, engine: &mut Engine) {
+        let verts = gen_rectangle(1.0, 1.0);
+        let mesh = Mesh::build(verts);
+        let tex = Texture::from_color_val([0.0, 0.0, 1.0, 1.0]);
+        let mtl = MaterialBuilder::new().with_albedo(tex);
 
-        {
-            let dim = world.read_resource::<ScreenDimensions>();
-            let mut camera = world.write_resource::<Camera>();
-            let aspect_ratio = dim.aspect_ratio;
-            let eye = [0., 0., 0.1];
-            let target = [0., 0., 0.];
-            let up = [0., 1., 0.];
+        let mesh = load_proc_asset(engine, move |engine| {
+            let factory = engine.world.read_resource::<Factory>();
+            factory.create_mesh(mesh).map(MeshComponent::new).map_err(
+                BoxedErr::new,
+            )
+        });
 
-            // Get an Orthographic projection
-            let proj = Projection::Orthographic {
-                left: -1.0 * aspect_ratio,
-                right: 1.0 * aspect_ratio,
-                bottom: -1.0,
-                top: 1.0,
-                near: 0.0,
-                far: 1.0,
+        let mtl = load_proc_asset(engine, move |engine| {
+            let factory = engine.world.read_resource::<Factory>();
+            factory
+                .create_material(mtl)
+                .map(MaterialComponent)
+                .map_err(BoxedErr::new)
+        });
+
+        let camera = {
+            struct ScreenDimensions {
+                //aspect_ratio: f32,
+                w: f32,
+                h: f32,
+            }
+
+            let dim = ScreenDimensions {
+                //aspect_ratio: 768.0 / 1024.0,
+                w: 1900.0,
+                h: 1000.0,
             };
 
-            let proj = Projection::Orthographic {
-                left: 0.0,
-                right: dim.w,
-                bottom: 0.0,
-                top: dim.h,
-                near: 0.0,
-                far: 1.0,
-            };
+            let proj = Projection::orthographic(0.0, dim.w, dim.h, 0.0);
 
-            camera.proj = proj;
-            camera.eye = eye;
-            camera.target = target;
-            camera.up = up;
+            Camera {
+                eye: [0., 0., 0.1].into(),
+                proj: proj.into(),
+                forward: [0.0, 0.0, -1.0].into(),
+                right: [1.0, 0.0, 0.0].into(),
+                up: [0.0, 1.0, 0.0].into(),
+            }
+        };
+
+        /*{
+            let mut local = LocalTransform::default();
+            local.translation = [400.0, 768.0 - 550.0, 0.0];
+            local.scale[0] = 300.0;
+            local.scale[1] = 20.0;
+
+            let mut body = Body::new(Shape::rect(Vector2::new(150.0, 10.0)));
+            body.set_static();
+            body.set_orient(&mut local, Rad(0.0));
+
+            engine.world
+            .create_entity()
+            .with(Transform::default())
+            .with(local)
+            .with(body)
+            .with(mesh.clone())
+            .with(mtl.clone())
+            .build();
         }
 
-        //world.add_resource(aabb_tree::AabbTree::<Entity>::new());
+        {
+            let mut local = LocalTransform::default();
+            local.translation = [500.0, 768.0 - 100.0, 0.0];
+            local.scale[0] = 10.0;
+            local.scale[1] = 10.0;
 
-        world.add_resource(InputHandler::new());
+            let mut body = Body::new(Shape::Circle{ radius: 10.0 });
 
-        assets.register_asset::<Mesh>();
-        assets.register_asset::<Texture>();
-        assets.load_asset_from_data::<Texture, [f32; 4]>("white", [1.0, 1.0, 1.0, 1.0]);
-        let square_verts = gen_rectangle(1.0, 1.0);
-        assets.load_asset_from_data::<Mesh, Vec<VertexPosNormal>>("square", square_verts);
-        let square = assets
-            .create_renderable("square", "white", "white", "white", 1.0)
-            .unwrap();
+            engine.world
+            .create_entity()
+            .with(Transform::default())
+            .with(local)
+            .with(body)
+            .with(mesh.clone())
+            .with(mtl.clone())
+            .build();
+        }*/
 
-        world.add_resource(square);
-        
+        engine.world.add_resource(InputHandler::new());
+        engine.world.add_resource(mesh);
+        engine.world.add_resource(mtl);
+        engine.world.add_resource(camera);
+
     }
 
-    fn update(&mut self, _: &mut World, _: &mut AssetManager, _: &mut Pipeline) -> Trans {
+    fn update(&mut self, _: &mut Engine) -> Trans {
         Trans::None
     }
 
-    fn handle_events(
-        &mut self,
-        events: &[WindowEvent],
-        world: &mut World,
-        _: &mut AssetManager,
-        _: &mut Pipeline,
-    ) -> Trans {
-
-        {
-            let mut input = world.write_resource::<InputHandler>();
-            input.update(events);
-        }
-
-        for e in events {
-            match **e {
-                Event::MouseInput(ElementState::Pressed, MouseButton::Left) => {
-                    world.create_entity().with(LineEvent::Start).build();
+    fn handle_event(&mut self, engine: &mut Engine, event: Event) -> Trans {
+        match event {
+            Event::WindowEvent { event, .. } => {
+                match event {
+                    WindowEvent::MouseInput {
+                        state: ElementState::Pressed,
+                        button: MouseButton::Left,
+                        ..
+                    } => {
+                        engine.world.create_entity().with(LineEvent::Start).build();
+                    }
+                    WindowEvent::MouseInput {
+                        state: ElementState::Released,
+                        button: MouseButton::Left,
+                        ..
+                    } => {
+                        engine.world.create_entity().with(LineEvent::End).build();
+                    }
+                    WindowEvent::MouseLeft { .. } => {
+                        engine.world.create_entity().with(LineEvent::Cancel).build();
+                    }
+                    WindowEvent::KeyboardInput {
+                        input: KeyboardInput {
+                            state: ElementState::Released,
+                            virtual_keycode: Some(VirtualKeyCode::S),
+                            ..
+                        },
+                        ..
+                    } => {
+                        engine.world.create_entity().with(SpawnEvent::Start).build();
+                    }
+                    WindowEvent::KeyboardInput {
+                        input: KeyboardInput {
+                            state: ElementState::Released,
+                            virtual_keycode: Some(VirtualKeyCode::D),
+                            ..
+                        },
+                        ..
+                    } => {
+                        engine.world.create_entity().with(SpawnEvent::Stop).build();
+                    }
+                    WindowEvent::KeyboardInput {
+                        input: KeyboardInput {
+                            state: ElementState::Released,
+                            virtual_keycode: Some(VirtualKeyCode::Q),
+                            ..
+                        },
+                        ..
+                    } => {
+                        engine.world.create_entity().with(SpawnEvent::RemoveDynamic).build();
+                    }
+                    WindowEvent::KeyboardInput {
+                        input: KeyboardInput {
+                            state: ElementState::Released,
+                            virtual_keycode: Some(VirtualKeyCode::X),
+                            ..
+                        },
+                        ..
+                    } => {
+                        engine.world.create_entity().with(SpawnEvent::RemoveAll).build();
+                    }
+                    WindowEvent::KeyboardInput {
+                        input: KeyboardInput {
+                            state: ElementState::Pressed,
+                            virtual_keycode: Some(VirtualKeyCode::Escape),
+                            ..
+                        },
+                        ..
+                    } |
+                    WindowEvent::Closed => return Trans::Quit,
+                    _ => (),
                 }
-                Event::MouseInput(ElementState::Released, MouseButton::Left) => {
-                    world.create_entity().with(LineEvent::End).build();
-                }
-                Event::MouseLeft => {
-                    world.create_entity().with(LineEvent::Cancel).build();
-                }
-                Event::KeyboardInput(_, _, Some(VirtualKeyCode::S)) => {
-                    world.create_entity().with(SpawnEvent::Start).build();
-                }
-                Event::KeyboardInput(_, _, Some(VirtualKeyCode::D)) => {
-                    world.create_entity().with(SpawnEvent::Stop).build();
-                }
-                Event::KeyboardInput(_, _, Some(VirtualKeyCode::Escape)) => return Trans::Quit,
-                Event::Closed => return Trans::Quit,
-                _ => (),
             }
+            _ => (),
         }
+
         Trans::None
     }
 }
@@ -145,54 +225,69 @@ fn main() {
 
     let path = format!("{}/Config.ron", env!("CARGO_MANIFEST_DIR"));
     let cfg = DisplayConfig::load(path);
-    let mut game = Application::build(pipe_away, cfg)
+    let mut game = Application::build(pipe_away)
+        .expect("app")
+        .with_renderer(
+            Pipeline::build().with_stage(
+                Stage::with_backbuffer()
+                    .clear_target([0.00196, 0.23726, 0.21765, 1.0], 1.0)
+                    .with_model_pass(pass::DrawFlat::<PosNormTex>::new()),
+            ),
+            Some(cfg),
+        )
+        .expect("renderer")
         .register::<LineEvent>()
-        .register::<PhysicsComponent>()
-        .register::<PhysicsInit>()
+        .register::<Body>()
         .register::<SpawnEvent>()
         .register::<Transform>()
         .register::<LocalTransform>()
+        .register::<Child>()
+        .register::<InitTransform>()
         .with::<SpawnSystem>(SpawnSystem::new(), "spawn_system", &[])
         .with::<PhysicsSystem>(PhysicsSystem::new(), "physics_system", &[])
         .with::<LineSystem>(LineSystem::new(), "line_system", &[])
-        .with::<TransformSystem>(TransformSystem::new(), "transform_system", &["physics_system"])
-        .done();
+        .with::<TransformSystem>(
+            TransformSystem::new(),
+            "transform_system",
+            &["physics_system"],
+        )
+        .build()
+        .expect("game");
     game.run();
 }
 
-fn gen_rectangle(w: f32, h: f32) -> Vec<VertexPosNormal> {
-    let data: Vec<VertexPosNormal> = vec![
-        VertexPosNormal {
-            pos: [-w / 2., -h / 2., 0.],
-            normal: [0., 0., 1.],
-            tex_coord: [0., 0.],
+fn gen_rectangle(w: f32, h: f32) -> Vec<PosNormTex> {
+    let data: Vec<PosNormTex> = vec![
+        PosNormTex {
+            a_position: [-w / 2., -h / 2., 0.],
+            a_normal: [0., 0., 1.],
+            a_tex_coord: [0., 0.],
         },
-        VertexPosNormal {
-            pos: [w / 2., -h / 2., 0.],
-            normal: [0., 0., 1.],
-            tex_coord: [1., 0.],
+        PosNormTex {
+            a_position: [w / 2., -h / 2., 0.],
+            a_normal: [0., 0., 1.],
+            a_tex_coord: [1., 0.],
         },
-        VertexPosNormal {
-            pos: [w / 2., h / 2., 0.],
-            normal: [0., 0., 1.],
-            tex_coord: [1., 1.],
+        PosNormTex {
+            a_position: [w / 2., h / 2., 0.],
+            a_normal: [0., 0., 1.],
+            a_tex_coord: [1., 1.],
         },
-        VertexPosNormal {
-            pos: [w / 2., h / 2., 0.],
-            normal: [0., 0., 1.],
-            tex_coord: [1., 1.],
+        PosNormTex {
+            a_position: [w / 2., h / 2., 0.],
+            a_normal: [0., 0., 1.],
+            a_tex_coord: [1., 1.],
         },
-        VertexPosNormal {
-            pos: [-w / 2., h / 2., 0.],
-            normal: [0., 0., 1.],
-            tex_coord: [1., 1.],
+        PosNormTex {
+            a_position: [-w / 2., h / 2., 0.],
+            a_normal: [0., 0., 1.],
+            a_tex_coord: [1., 1.],
         },
-        VertexPosNormal {
-            pos: [-w / 2., -h / 2., 0.],
-            normal: [0., 0., 1.],
-            tex_coord: [1., 1.],
+        PosNormTex {
+            a_position: [-w / 2., -h / 2., 0.],
+            a_normal: [0., 0., 1.],
+            a_tex_coord: [1., 1.],
         },
     ];
     data
 }
-

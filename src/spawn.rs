@@ -1,17 +1,21 @@
-use amethyst::ecs::{Component, VecStorage, System, Fetch, FetchMut, Join, WriteStorage};
-use amethyst::ecs::components::{LocalTransform, Transform, Renderable, Child};
-use amethyst::ecs::resources::{InputHandler, Time};
+use amethyst::ecs::{World, Component, VecStorage, System, Fetch, ParJoin, Join, WriteStorage, ReadStorage};
+use amethyst::ecs::transform::{LocalTransform, Transform};
+use amethyst::ecs::rendering::{MeshComponent, MaterialComponent};
+use amethyst::timing::Time;
 use amethyst::ecs::{Entities, LazyUpdate};
-use amethyst::asset_manager::AssetManager;
-use cgmath;
-use cgmath::{MetricSpace, Rotation3};
-use std::f32::consts::PI;
+use amethyst::assets::AssetFuture;
+use super::physics::{Body, Shape};
 use std::time::Duration;
+use cgmath::Rad;
+use rayon::iter::ParallelIterator;
 
 #[derive(Copy, Clone)]
 pub enum SpawnEvent {
     Start,
     Stop,
+    Run,
+    RemoveDynamic,
+    RemoveAll,
 }
 
 impl Component for SpawnEvent {
@@ -33,68 +37,67 @@ impl SpawnSystem {
 }
 
 impl<'a> System<'a> for SpawnSystem {
-    type SystemData = (
-        WriteStorage<'a, SpawnEvent>, 
-        Fetch<'a, Renderable>,
-        Fetch<'a, Time>,
-        Entities<'a>, 
-        Fetch<'a, LazyUpdate>,
-    );
+    type SystemData = (WriteStorage<'a, SpawnEvent>,
+     ReadStorage<'a, Body>,
+     Fetch<'a, AssetFuture<MeshComponent>>,
+     Fetch<'a, AssetFuture<MaterialComponent>>,
+     Fetch<'a, Time>,
+     Entities<'a>,
+     Fetch<'a, LazyUpdate>);
 
-    fn run(&mut self, (mut events, square, time, entities, lazy): Self::SystemData) {
-
+    fn run(&mut self, (mut events, bodies, square, material, time, entities, lazy): Self::SystemData) {
         if let Some(evt) = events.join().last() {
-            self.current_state = *evt;
+            match evt {
+                &SpawnEvent::RemoveDynamic => {
+                    (&*entities, &bodies).par_join().filter(|&(entity, body)| body.inv_mass > 0.0).for_each(|(entity, _)|{
+                        entities.delete(entity);
+                    });
+                },
+                &SpawnEvent::RemoveAll => {
+                    (&*entities, &bodies).par_join().for_each(|(entity, _)|{
+                        entities.delete(entity);
+                    });
+                }
+                _ => self.current_state = *evt
+            }
         }
         events.clear();
 
         self.delta += time.delta_time;
+        let wait_time = Duration::from_millis(250);
 
-        if let SpawnEvent::Start = self.current_state {
-            if self.delta > Duration::from_millis(100) {
-                self.delta = Duration::from_millis(0);
+        if let SpawnEvent::Stop = self.current_state {
+            self.delta = Duration::from_millis(0);
+        } else {
+            match self.current_state {
+                SpawnEvent::Start => {
+                    self.current_state = SpawnEvent::Run;
+                    self.delta += wait_time;
+                },
+                _ => ()
+            }
+            
+            if let SpawnEvent::Run = self.current_state {
+                if self.delta >= wait_time {
+                    self.delta -= wait_time;
 
-                {
                     let mut line_transform = LocalTransform::default();
-                    line_transform.translation[0] = 300.0;
-                    line_transform.translation[1] = 568.0;
-                    line_transform.scale[0] = 35.0;
-                    line_transform.scale[1] = 35.0;
+                    line_transform.translation[0] = 512.0;
+                    line_transform.translation[1] = 1000.0 - 50.0;
+                    line_transform.scale[0] = 10.0;
+                    line_transform.scale[1] = 10.0;
+
+                    let mut body = Body::new(Shape::Circle { radius: 10.0 });
+                    body.static_friction = 0.2;
+                    body.set_orient(&mut line_transform, Rad(0.0));
 
                     let line_entity = entities.create();
-                    lazy.insert(line_entity, square.clone());
-                    line_transform.aabb = ((-5.0, -5.0, -5.0), (5.0, 5.0, 5.0));
-
-                    lazy.insert(line_entity, line_transform);
                     lazy.insert(line_entity, Transform::default());
+                    lazy.insert(line_entity, line_transform);
+                    lazy.insert(line_entity, body);
+                    lazy.insert(line_entity, square.clone());
+                    lazy.insert(line_entity, material.clone());
                 }
-
-                let mut line_transform = LocalTransform::default();
-                line_transform.translation[0] = 50.0;
-                line_transform.translation[1] = 768.0 - 50.0;
-                line_transform.scale[0] = 50.0;
-                line_transform.scale[1] = 50.0;
-
-                let line_entity = entities.create();
-                lazy.insert(line_entity, square.clone());
-
-                //let mut spatial = super::Spatial::new();
-                //spatial.transform = line_transform;
-                line_transform.aabb = ((-25.0, -25.0, -5.0), (25.0, 25.0, 5.0));
-
-                lazy.insert(line_entity, line_transform);
-                lazy.insert(line_entity, Transform::default());
-
-                /*let cuboid = super::Ball2::new(10.0);
-                let mut body = super::RigidBody::new_dynamic(cuboid, 1.0, 0.2, 0.3);
-                body.set_translation(::nalgebra::Translation2::new(50.0, 768.0 - 50.0));
-
-                let handle = {
-                    world.add_rigid_body(body)
-                };
-
-                lazy.insert(line_entity, super::PhysicsComponent(handle));*/
-                lazy.insert(line_entity, super::PhysicsComponent::new_dynamic(50.0));
             }
         }
     }
